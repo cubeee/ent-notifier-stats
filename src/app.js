@@ -1,4 +1,5 @@
-import { createSQLiteThread, createHttpBackend } from 'sqlite-wasm-http';
+import initSqlJs from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { Chart } from 'chart.js/auto';
 import { MatrixController, MatrixElement } from 'chartjs-chart-matrix';
 
@@ -211,32 +212,29 @@ async function main() {
 
   setStatus('Loading events…');
 
-  // GitHub Pages can't send the COOP/COEP headers required for
-  // SharedArrayBuffer, so the "shared" multi-worker backend never works
-  // there — request "sync" explicitly rather than relying on the
-  // library's automatic (but noisily-logged) fallback.
-  const httpBackend = createHttpBackend({
-    backendType: 'sync',
-    maxPageSize: 4096,
-    timeout: 10000,
-    cacheSize: 4096,
-  });
-  const db = await createSQLiteThread({ http: httpBackend });
-  await db('open', {
-    filename: 'file:' + encodeURI(new URL('events.db', location.href)),
-    vfs: 'http',
-  });
+  // Whole-file fetch + in-memory query, no Worker/Range requests. Tried
+  // sqlite-wasm-http's HTTP-range VFS first to avoid downloading the
+  // whole DB, but its "sync" backend (the only one that works without
+  // GitHub Pages' unavailable COOP/COEP headers) threw SQLITE_CORRUPT
+  // reading a file that was independently verified byte-identical and
+  // integrity-checked — a bug in that library's ranged-read handling, not
+  // a data problem. At this project's DB size (tens of KB to low tens of
+  // MB even years out), a single whole-file fetch is simple and reliable.
+  const [SQL, dbBytes] = await Promise.all([
+    initSqlJs({ locateFile: () => sqlWasmUrl }),
+    fetch(new URL('events.db', location.href)).then((r) => {
+      if (!r.ok) throw new Error(`events.db fetch failed: ${r.status}`);
+      return r.arrayBuffer();
+    }),
+  ]);
+  const db = new SQL.Database(new Uint8Array(dbBytes));
 
-  // Single narrow query feeds both charts: discovered_time is the
+  // Single narrow query feeds all three charts: discovered_time is the
   // leftmost column of idx_events_discovered_time, so this is a covering
-  // index scan (the wider events table b-tree is never touched) — the
-  // cheapest possible access pattern over HTTP range requests, since it's
-  // a sequential read of small, densely packed index pages.
-  const times = [];
-  await db('exec', {
-    sql: 'SELECT discovered_time FROM events ORDER BY discovered_time',
-    callback: (msg) => times.push(msg.row[0]),
-  });
+  // index scan (the wider events table b-tree is never touched).
+  const result = db.exec('SELECT discovered_time FROM events ORDER BY discovered_time');
+  const times = result.length > 0 ? result[0].values.map((row) => row[0]) : [];
+  db.close();
 
   setStatus('');
 

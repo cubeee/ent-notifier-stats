@@ -10,7 +10,7 @@
   "dependencies": {
     "chart.js": "^4.5.1",
     "chartjs-chart-matrix": "^3.0.5",
-    "sqlite-wasm-http": "^1.2.0"
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "vite": "^7.0.0"
