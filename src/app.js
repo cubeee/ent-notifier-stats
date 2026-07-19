@@ -2,8 +2,10 @@ import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { Chart } from 'chart.js/auto';
 import { MatrixController, MatrixElement } from 'chartjs-chart-matrix';
+import 'chartjs-adapter-luxon';
+import zoomPlugin from 'chartjs-plugin-zoom';
 
-Chart.register(MatrixController, MatrixElement);
+Chart.register(MatrixController, MatrixElement, zoomPlugin);
 
 const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0') + ':00');
 const HEATMAP_DAY_WIDTH = 18; // px per day column, drives horizontal scroll width
@@ -35,10 +37,15 @@ function heatmapColor(value, max) {
 }
 
 const statusEl = document.getElementById('status');
+const totalEventsEl = document.getElementById('totalEvents');
 const timezoneSelect = document.getElementById('timezone');
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function setTotalEvents(count) {
+  totalEventsEl.innerHTML = `<strong>${count.toLocaleString()}</strong> events scouted in total`;
 }
 
 function populateTimezones() {
@@ -85,6 +92,40 @@ function bucketByHourOfDay(times, timezone) {
     labels: counts.map((_, hour) => String(hour).padStart(2, '0') + ':00'),
     values: counts,
   };
+}
+
+const TREND_WINDOW_HOURS = 24; // 1-day trailing window
+const TREND_SAMPLE_HOURS = 6; // plot 4 points/day — finer than the window itself so intra-day movement is still visible
+
+function hourlyRateTrend(times) {
+  // Raw per-hour counts are too noisy to read as a trend (0-14 range,
+  // jumping every hour) — see the earlier version of this chart. Instead,
+  // bucket every hour (including zero-count hours, so the rolling window
+  // covers uniform time steps) and plot a trailing rolling average of
+  // events/hour, which is what actually answers "is this going down?".
+  if (times.length === 0) return [];
+
+  const counts = new Map();
+  for (const t of times) {
+    const bucketStart = Math.floor(t / 3600) * 3600;
+    counts.set(bucketStart, (counts.get(bucketStart) || 0) + 1);
+  }
+
+  const minHour = Math.floor(times[0] / 3600) * 3600;
+  const maxHour = Math.floor(times[times.length - 1] / 3600) * 3600;
+  const totalHours = (maxHour - minHour) / 3600 + 1;
+
+  const points = [];
+  let sum = 0;
+  for (let i = 0; i < totalHours; i++) {
+    sum += counts.get(minHour + i * 3600) || 0;
+    if (i >= TREND_WINDOW_HOURS) sum -= counts.get(minHour + (i - TREND_WINDOW_HOURS) * 3600) || 0;
+    if (i % TREND_SAMPLE_HOURS === 0 || i === totalHours - 1) {
+      const windowSize = Math.min(i + 1, TREND_WINDOW_HOURS);
+      points.push({ x: (minHour + i * 3600) * 1000, y: sum / windowSize });
+    }
+  }
+  return points;
 }
 
 function bucketByDayHour(times, timezone) {
@@ -149,6 +190,54 @@ function renderHourOfDayChart(times, timezone) {
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
     },
   });
+}
+
+let hourlyChart;
+function renderHourlyChart(times, timezone) {
+  hourlyChart = new Chart(document.getElementById('hourlyChart'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: `Events/hour (${TREND_WINDOW_HOURS / 24}-day trailing avg)`,
+        data: hourlyRateTrend(times),
+        borderColor: '#3ba572',
+        backgroundColor: '#3ba572',
+        pointRadius: 0,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      // Users can drag to pan and scroll/pinch to zoom to browse into
+      // the past, since the full history can span years.
+      plugins: {
+        zoom: {
+          pan: { enabled: true, mode: 'x' },
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+        },
+      },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'events/hour' } },
+        x: {
+          type: 'time',
+          time: {
+            unit: 'day',
+            displayFormats: { day: 'yyyy-MM-dd' },
+            tooltipFormat: 'yyyy-MM-dd HH:mm',
+          },
+          ticks: { autoSkip: true, maxRotation: 60, minRotation: 60 },
+          adapters: { date: { zone: timezone } },
+        },
+      },
+    },
+  });
+}
+
+// Bucketing is timezone-independent (see bucketByHour), so a timezone
+// change only needs to update the axis's display zone, not the dataset —
+// this also preserves the user's current pan/zoom position.
+function updateHourlyChartTimezone(timezone) {
+  hourlyChart.options.scales.x.adapters.date.zone = timezone;
+  hourlyChart.update();
 }
 
 let heatmapChart;
@@ -229,7 +318,7 @@ async function main() {
   ]);
   const db = new SQL.Database(new Uint8Array(dbBytes));
 
-  // Single narrow query feeds all three charts: discovered_time is the
+  // Single narrow query feeds all four charts: discovered_time is the
   // leftmost column of idx_events_discovered_time, so this is a covering
   // index scan (the wider events table b-tree is never touched).
   const result = db.exec('SELECT discovered_time FROM events ORDER BY discovered_time');
@@ -237,13 +326,16 @@ async function main() {
   db.close();
 
   setStatus('');
+  setTotalEvents(times.length);
 
   renderDailyChart(times);
   renderHourOfDayChart(times, timezoneSelect.value);
+  renderHourlyChart(times, timezoneSelect.value);
   renderHeatmapChart(times, timezoneSelect.value);
 
   timezoneSelect.addEventListener('change', () => {
     renderHourOfDayChart(times, timezoneSelect.value);
+    updateHourlyChartTimezone(timezoneSelect.value);
     renderHeatmapChart(times, timezoneSelect.value);
   });
 }

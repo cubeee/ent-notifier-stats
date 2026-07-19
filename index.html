@@ -40,11 +40,24 @@
     max-height: none;
     height: 420px !important;
   }
+  #totalEvents {
+    font-size: 0.95rem;
+    margin: 0.25rem 0 1rem;
+  }
+  #totalEvents strong {
+    font-size: 1.4rem;
+  }
+  .chart-explanation {
+    font-size: 0.85rem;
+    color: #555;
+    margin-top: 0.25rem;
+  }
 </style>
 </head>
 <body>
 <h1>Ent Events</h1>
 <p id="status"></p>
+<p id="totalEvents"></p>
 
 <label for="timezone">Timezone (applies to hour-based charts below):
   <select id="timezone"></select>
@@ -52,17 +65,25 @@
 
 <section>
   <h2>Events per day</h2>
+  <p class="chart-explanation">Number of events discovered on each calendar day (UTC).</p>
   <canvas id="dailyChart"></canvas>
 </section>
 
 <section>
   <h2>Activity by hour of day</h2>
+  <p class="chart-explanation">Events summed by hour of day (0–23) in the selected timezone, across the entire history — shows what time of day scouting tends to be most active.</p>
   <canvas id="hourChart"></canvas>
 </section>
 
 <section>
+  <h2>Events/hour trend</h2>
+  <p class="chart-explanation">A 1-day trailing average of events per hour, sampled every 6 hours — smooths out hour-to-hour noise while still tracking day-to-day movement. Scroll/pinch to zoom, drag to pan through specific periods.</p>
+  <canvas id="hourlyChart"></canvas>
+</section>
+
+<section>
   <h2>Activity by day &amp; hour</h2>
-  <p style="font-size: 0.85rem; color: #555;">Scroll horizontally to browse into the past.</p>
+  <p class="chart-explanation">Day (x-axis) vs. hour of day (y-axis) — darker cells mean more events at that day/hour combination. Scroll horizontally to browse into the past.</p>
   <div id="heatmapScroll">
     <div id="heatmapInner"><canvas id="heatmapChart"></canvas></div>
   </div>
