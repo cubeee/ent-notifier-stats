@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ent Events</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    color: #222;
+  }
+  h1 {
+    font-size: 1.25rem;
+  }
+  section {
+    margin-bottom: 3rem;
+  }
+  label {
+    font-size: 0.9rem;
+  }
+  select {
+    font-size: 0.9rem;
+    margin-left: 0.5rem;
+  }
+  #status {
+    color: #a00;
+    font-size: 0.9rem;
+  }
+  canvas {
+    max-height: 320px;
+  }
+  #heatmapScroll {
+    overflow-x: auto;
+    border: 1px solid #ddd;
+  }
+  #heatmapScroll canvas {
+    max-height: none;
+    height: 420px !important;
+  }
+</style>
+</head>
+<body>
+<h1>Ent Events</h1>
+<p id="status"></p>
+
+<label for="timezone">Timezone (applies to hour-based charts below):
+  <select id="timezone"></select>
+</label>
+
+<section>
+  <h2>Events per day</h2>
+  <canvas id="dailyChart"></canvas>
+</section>
+
+<section>
+  <h2>Activity by hour of day</h2>
+  <canvas id="hourChart"></canvas>
+</section>
+
+<section>
+  <h2>Activity by day &amp; hour</h2>
+  <p style="font-size: 0.85rem; color: #555;">Scroll horizontally to browse into the past.</p>
+  <div id="heatmapScroll">
+    <div id="heatmapInner"><canvas id="heatmapChart"></canvas></div>
+  </div>
+</section>
+
+<script type="module" src="/src/app.js"></script>
+</body>
+</html>
