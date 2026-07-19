@@ -1,5 +1,5 @@
 dist/
 node_modules/
 *.db
-!events.db
+!public/events.db
 README.md
