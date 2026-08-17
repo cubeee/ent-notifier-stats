@@ -77,20 +77,31 @@ function bucketByUtcDay(times) {
 }
 
 function bucketByHourOfDay(times, timezone) {
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
     hour: 'numeric',
     hour12: false,
   });
   const counts = new Array(24).fill(0);
+  const days = new Set();
   for (const t of times) {
+    const parts = formatter.formatToParts(new Date(t * 1000));
+    const get = (type) => parts.find((p) => p.type === type).value;
     // "24" is used by some locales/timezones for midnight instead of "0"
-    const hour = Number(formatter.format(new Date(t * 1000))) % 24;
+    const hour = Number(get('hour')) % 24;
     counts[hour]++;
+    days.add(`${get('year')}-${get('month')}-${get('day')}`);
   }
+  // Divide by the number of distinct days observed so the chart shows
+  // average events/hour-of-day rather than a raw sum, which just tracks
+  // total event volume and skews toward whichever hour has the most days.
+  const dayCount = days.size || 1;
   return {
     labels: counts.map((_, hour) => String(hour).padStart(2, '0') + ':00'),
-    values: counts,
+    values: counts.map((c) => c / dayCount),
   };
 }
 
@@ -184,10 +195,10 @@ function renderHourOfDayChart(times, timezone) {
     type: 'bar',
     data: {
       labels,
-      datasets: [{ label: 'Events', data: values, backgroundColor: '#a53b6e' }],
+      datasets: [{ label: 'Avg events/day', data: values, backgroundColor: '#a53b6e' }],
     },
     options: {
-      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      scales: { y: { beginAtZero: true } },
     },
   });
 }
